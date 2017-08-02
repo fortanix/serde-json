@@ -13,6 +13,8 @@ use std::io;
 use std::num::FpCategory;
 use std::str;
 
+use rustc_serialize::base64::{ToBase64, STANDARD};
+
 use serde::ser::{self, Impossible};
 use super::error::{Error, ErrorCode, Result};
 
@@ -230,14 +232,10 @@ where
         Ok(())
     }
 
+    /// Serialize a base64-encoded string.
     #[inline]
     fn serialize_bytes(self, value: &[u8]) -> Result<()> {
-        use serde::ser::SerializeSeq;
-        let mut seq = try!(self.serialize_seq(Some(value.len())));
-        for byte in value {
-            try!(seq.serialize_element(byte));
-        }
-        seq.end()
+        self.serialize_str(&value.to_base64(STANDARD))
     }
 
     #[inline]
