@@ -326,6 +326,7 @@ extern crate itoa;
 extern crate dtoa;
 #[cfg(feature = "preserve_order")]
 extern crate linked_hash_map;
+extern crate rustc_serialize;
 
 #[doc(inline)]
 pub use self::de::{Deserializer, StreamDeserializer, from_reader, from_slice, from_str};
