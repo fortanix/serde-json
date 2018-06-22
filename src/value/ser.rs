@@ -6,6 +6,7 @@
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
+use rustc_serialize::base64::{ToBase64, STANDARD};
 use serde::{self, Serialize};
 
 use error::{Error, ErrorCode};
@@ -119,8 +120,7 @@ impl serde::Serializer for Serializer {
     }
 
     fn serialize_bytes(self, value: &[u8]) -> Result<Value, Error> {
-        let vec = value.iter().map(|&b| Value::Number(b.into())).collect();
-        Ok(Value::Array(vec))
+        Ok(Value::String(value.to_base64(STANDARD)))
     }
 
     #[inline]
