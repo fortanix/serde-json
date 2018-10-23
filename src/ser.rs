@@ -847,6 +847,10 @@ where
         self.ser.serialize_str(value)
     }
 
+    fn serialize_bytes(self, value: &[u8]) -> Result<()> {
+        self.ser.serialize_bytes(value)
+    }
+
     #[inline]
     fn serialize_unit_variant(
         self,
@@ -1062,10 +1066,6 @@ where
     }
 
     fn serialize_char(self, _value: char) -> Result<()> {
-        Err(key_must_be_a_string())
-    }
-
-    fn serialize_bytes(self, _value: &[u8]) -> Result<()> {
         Err(key_must_be_a_string())
     }
 
