@@ -4,6 +4,7 @@ use crate::value::{to_value, Value};
 use alloc::borrow::ToOwned;
 use alloc::string::{String, ToString};
 use alloc::vec::Vec;
+use b64_ct::{ToBase64 as _, STANDARD};
 use core::fmt::Display;
 use core::result;
 use serde::ser::{Impossible, Serialize};
@@ -169,9 +170,9 @@ impl serde::Serializer for Serializer {
         Ok(Value::String(value.to_owned()))
     }
 
+    /// Serialize to a base64-encoded [Value::String]
     fn serialize_bytes(self, value: &[u8]) -> Result<Value> {
-        let vec = value.iter().map(|&b| Value::Number(b.into())).collect();
-        Ok(Value::Array(vec))
+        Ok(Value::String(value.to_base64(STANDARD)))
     }
 
     #[inline]
@@ -559,8 +560,8 @@ impl serde::Serializer for MapKeySerializer {
         Ok(value.to_owned())
     }
 
-    fn serialize_bytes(self, _value: &[u8]) -> Result<String> {
-        Err(key_must_be_a_string())
+    fn serialize_bytes(self, value: &[u8]) -> Result<String> {
+        Ok(value.to_base64(STANDARD))
     }
 
     fn serialize_unit(self) -> Result<String> {
