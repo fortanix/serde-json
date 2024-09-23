@@ -1677,92 +1677,93 @@ fn test_serialize_rejects_adt_keys() {
 
 #[test]
 fn test_bytes_ser() {
-    let buf = vec![];
-    let bytes = Bytes::new(&buf);
-    assert_eq!(to_string(&bytes).unwrap(), "[]".to_string());
-
-    let buf = vec![1, 2, 3];
-    let bytes = Bytes::new(&buf);
-    assert_eq!(to_string(&bytes).unwrap(), "[1,2,3]".to_string());
+    test_encode_ok(&[
+        (Bytes::new(&(vec![])), "\"\""),
+        (Bytes::new(&(vec![1, 2, 3])), "\"AQID\""),
+    ])
 }
 
 #[test]
 fn test_byte_buf_ser() {
-    let bytes = ByteBuf::new();
-    assert_eq!(to_string(&bytes).unwrap(), "[]".to_string());
-
-    let bytes = ByteBuf::from(vec![1, 2, 3]);
-    assert_eq!(to_string(&bytes).unwrap(), "[1,2,3]".to_string());
+    test_encode_ok(&[
+        (ByteBuf::new(), "\"\""),
+        (ByteBuf::from(vec![1, 2, 3]), "\"AQID\""),
+    ])
 }
 
+/// Note:
+/// - the deserialization path depends on whether a Json array or string is fed as input
+/// - we cannot deserialize into [Bytes] using base64; we never borrow from the original input, as
+/// we need to create a new allocation as part of the base64 decoding process
 #[test]
 fn test_byte_buf_de() {
-    let bytes = ByteBuf::new();
-    let v: ByteBuf = from_str("[]").unwrap();
-    assert_eq!(v, bytes);
+    // Json strings are deserialized compactly as `Strings` when the target type uses
+    // `deserialize_bytes`
+    test_parse_ok(vec![
+        ("\"\"", ByteBuf::new()),
+        ("\"AQID\"", ByteBuf::from(vec![1, 2, 3])),
+    ]);
 
-    let bytes = ByteBuf::from(vec![1, 2, 3]);
-    let v: ByteBuf = from_str("[1, 2, 3]").unwrap();
-    assert_eq!(v, bytes);
+    // Original implementation: deserialization of bracketed string from an `Array`
+    test_parse_ok(vec![("[]", Vec::new()), ("[1, 2, 3]", vec![1, 2, 3])]);
+
+    // When serializing as a sequence but deserializing as bytes, deserialization still works
+    #[derive(Clone, Debug, PartialEq)]
+    struct Amphibia {
+        bytes: Vec<u8>,
+    }
+
+    impl Amphibia {
+        fn new(bytes: Vec<u8>) -> Self {
+            Amphibia { bytes }
+        }
+    }
+
+    impl<'de> Deserialize<'de> for Amphibia {
+        fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+        where
+            D: de::Deserializer<'de>,
+        {
+            Ok(Amphibia {
+                bytes: serde_bytes::ByteBuf::deserialize(deserializer)?.into_vec(),
+            })
+        }
+    }
+
+    impl Serialize for Amphibia {
+        fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+        where
+            S: Serializer,
+        {
+            self.bytes.serialize(serializer)
+        }
+    }
+
+    test_parse_ok(vec![
+        ("[]", Amphibia::new(vec![])),
+        ("[1, 2, 3]", Amphibia::new(vec![1, 2, 3])),
+    ]);
 }
 
 #[test]
-fn test_byte_buf_de_invalid_surrogates() {
-    let bytes = ByteBuf::from(vec![237, 160, 188]);
-    let v: ByteBuf = from_str(r#""\ud83c""#).unwrap();
-    assert_eq!(v, bytes);
-
-    let bytes = ByteBuf::from(vec![237, 160, 188, 10]);
-    let v: ByteBuf = from_str(r#""\ud83c\n""#).unwrap();
-    assert_eq!(v, bytes);
-
-    let bytes = ByteBuf::from(vec![237, 160, 188, 32]);
-    let v: ByteBuf = from_str(r#""\ud83c ""#).unwrap();
-    assert_eq!(v, bytes);
-
-    let res = from_str::<ByteBuf>(r#""\ud83c\!""#);
-    assert!(res.is_err());
-
-    let res = from_str::<ByteBuf>(r#""\ud83c\u""#);
-    assert!(res.is_err());
-
-    // lone trailing surrogate
-    let bytes = ByteBuf::from(vec![237, 176, 129]);
-    let v: ByteBuf = from_str(r#""\udc01""#).unwrap();
-    assert_eq!(v, bytes);
-
-    // leading surrogate followed by other leading surrogate
-    let bytes = ByteBuf::from(vec![237, 160, 188, 237, 160, 188]);
-    let v: ByteBuf = from_str(r#""\ud83c\ud83c""#).unwrap();
-    assert_eq!(v, bytes);
-
-    // leading surrogate followed by "a" (U+0061) in \u encoding
-    let bytes = ByteBuf::from(vec![237, 160, 188, 97]);
-    let v: ByteBuf = from_str(r#""\ud83c\u0061""#).unwrap();
-    assert_eq!(v, bytes);
-
-    // leading surrogate followed by U+0080
-    let bytes = ByteBuf::from(vec![237, 160, 188, 194, 128]);
-    let v: ByteBuf = from_str(r#""\ud83c\u0080""#).unwrap();
-    assert_eq!(v, bytes);
-
-    // leading surrogate followed by U+FFFF
-    let bytes = ByteBuf::from(vec![237, 160, 188, 239, 191, 191]);
-    let v: ByteBuf = from_str(r#""\ud83c\uffff""#).unwrap();
-    assert_eq!(v, bytes);
-}
-
-#[test]
-fn test_byte_buf_de_surrogate_pair() {
-    // leading surrogate followed by trailing surrogate
-    let bytes = ByteBuf::from(vec![240, 159, 128, 128]);
-    let v: ByteBuf = from_str(r#""\ud83c\udc00""#).unwrap();
-    assert_eq!(v, bytes);
-
-    // leading surrogate followed by a surrogate pair
-    let bytes = ByteBuf::from(vec![237, 160, 188, 240, 159, 128, 128]);
-    let v: ByteBuf = from_str(r#""\ud83c\ud83c\udc00""#).unwrap();
-    assert_eq!(v, bytes);
+fn test_byte_buf_de_surrogates() {
+    test_parse_err::<ByteBuf>(&[
+        // single surrogate
+        (
+            r#""\ud83c""#,
+            "invalid value: byte array, expected base64 encoded bytes",
+        ),
+        // leading surrogate followed by trailing surrogate
+        (
+            r#""\ud83c\udc00""#,
+            "invalid value: byte array, expected base64 encoded bytes",
+        ),
+        // leading surrogate followed by a surrogate pair
+        (
+            r#""\ud83c\ud83c\udc00""#,
+            "invalid value: byte array, expected base64 encoded bytes",
+        ),
+    ]);
 }
 
 #[cfg(feature = "raw_value")]
@@ -1792,7 +1793,7 @@ fn test_raw_de_surrogate_pair() {
 
 #[test]
 fn test_byte_buf_de_multiple() {
-    let s: Vec<ByteBuf> = from_str(r#"["ab\nc", "cd\ne"]"#).unwrap();
+    let s: Vec<ByteBuf> = from_str(r#"["YWIKYw==", "Y2QKZQ"]"#).unwrap();
     let a = ByteBuf::from(b"ab\nc".to_vec());
     let b = ByteBuf::from(b"cd\ne".to_vec());
     assert_eq!(vec![a, b], s);
@@ -2557,4 +2558,15 @@ fn test_control_character_search() {
         "\"\t\n\r\"",
         "control character (\\u0000-\\u001F) found while parsing a string at line 1 column 2",
     )]);
+}
+
+#[test]
+fn test_blob_key() {
+    let buf1 = ByteBuf::from(vec![1, 2, 3]);
+    let buf2 = ByteBuf::from(vec![]);
+    let j = r#"{"":1,"AQID":0}"#;
+
+    let map = treemap!(buf1.clone() => 0, buf2.clone() => 1);
+    test_encode_ok(&[(&map, j)]);
+    test_parse_ok(vec![(j, map)]);
 }
