@@ -7,6 +7,7 @@ use alloc::string::String;
 #[cfg(feature = "raw_value")]
 use alloc::string::ToString;
 use alloc::vec::{self, Vec};
+use b64_ct::FromBase64;
 use core::fmt;
 use core::slice;
 use core::str::FromStr;
@@ -362,8 +363,11 @@ impl<'de> serde::Deserializer<'de> for Value {
         V: Visitor<'de>,
     {
         match self {
+            // Base-64 encoded bytes
             #[cfg(any(feature = "std", feature = "alloc"))]
-            Value::String(v) => visitor.visit_string(v),
+            Value::String(v) => visitor.visit_byte_buf(v.from_base64().map_err(|_| {
+                de::Error::invalid_value(de::Unexpected::Str(&v), &"base64 encoded string")
+            })?),
             Value::Array(v) => visit_array(v, visitor),
             _ => Err(self.invalid_type(&visitor)),
         }
@@ -853,7 +857,11 @@ impl<'de> serde::Deserializer<'de> for &'de Value {
         V: Visitor<'de>,
     {
         match self {
-            Value::String(v) => visitor.visit_borrowed_str(v),
+            // Base-64 encoded bytes
+            #[cfg(any(feature = "std", feature = "alloc"))]
+            Value::String(v) => visitor.visit_byte_buf(v.from_base64().map_err(|_| {
+                de::Error::invalid_value(de::Unexpected::Str(v), &"base64 encoded string")
+            })?),
             Value::Array(v) => visit_array_ref(v, visitor),
             _ => Err(self.invalid_type(&visitor)),
         }
@@ -1236,8 +1244,30 @@ impl<'de> serde::Deserializer<'de> for MapKeyDeserializer<'de> {
             .deserialize_enum(name, variants, visitor)
     }
 
+    /// Decode base64 before relaying to visitor
+    fn deserialize_bytes<V>(self, visitor: V) -> Result<V::Value, Error>
+    where
+        V: Visitor<'de>,
+    {
+        let raw_str = match self.key {
+            Cow::Borrowed(s) => s,
+            Cow::Owned(ref s) => s,
+        };
+
+        visitor.visit_byte_buf(raw_str.from_base64().map_err(|_| {
+            de::Error::invalid_value(de::Unexpected::Str(raw_str), &"base64 encoded bytes")
+        })?)
+    }
+
+    fn deserialize_byte_buf<V>(self, visitor: V) -> Result<V::Value, Error>
+    where
+        V: Visitor<'de>,
+    {
+        self.deserialize_bytes(visitor)
+    }
+
     forward_to_deserialize_any! {
-        char str string bytes byte_buf unit unit_struct seq tuple tuple_struct
+        char str string unit unit_struct seq tuple tuple_struct
         map struct identifier ignored_any
     }
 }
