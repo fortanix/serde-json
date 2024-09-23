@@ -7,6 +7,7 @@ use crate::number::Number;
 use crate::read::{self, Fused, Reference};
 use alloc::string::String;
 use alloc::vec::Vec;
+use b64_ct::FromBase64;
 #[cfg(feature = "float_roundtrip")]
 use core::iter;
 use core::iter::FusedIterator;
@@ -1549,79 +1550,7 @@ impl<'de, 'a, R: Read<'de>> de::Deserializer<'de> for &'a mut Deserializer<R> {
         self.deserialize_str(visitor)
     }
 
-    /// Parses a JSON string as bytes. Note that this function does not check
-    /// whether the bytes represent a valid UTF-8 string.
-    ///
-    /// The relevant part of the JSON specification is Section 8.2 of [RFC
-    /// 7159]:
-    ///
-    /// > When all the strings represented in a JSON text are composed entirely
-    /// > of Unicode characters (however escaped), then that JSON text is
-    /// > interoperable in the sense that all software implementations that
-    /// > parse it will agree on the contents of names and of string values in
-    /// > objects and arrays.
-    /// >
-    /// > However, the ABNF in this specification allows member names and string
-    /// > values to contain bit sequences that cannot encode Unicode characters;
-    /// > for example, "\uDEAD" (a single unpaired UTF-16 surrogate). Instances
-    /// > of this have been observed, for example, when a library truncates a
-    /// > UTF-16 string without checking whether the truncation split a
-    /// > surrogate pair.  The behavior of software that receives JSON texts
-    /// > containing such values is unpredictable; for example, implementations
-    /// > might return different values for the length of a string value or even
-    /// > suffer fatal runtime exceptions.
-    ///
-    /// [RFC 7159]: https://tools.ietf.org/html/rfc7159
-    ///
-    /// The behavior of serde_json is specified to fail on non-UTF-8 strings
-    /// when deserializing into Rust UTF-8 string types such as String, and
-    /// succeed with the bytes representing the [WTF-8] encoding of code points
-    /// when deserializing using this method.
-    ///
-    /// [WTF-8]: https://simonsapin.github.io/wtf-8
-    ///
-    /// Escape sequences are processed as usual, and for `\uXXXX` escapes it is
-    /// still checked if the hex number represents a valid Unicode code point.
-    ///
-    /// # Examples
-    ///
-    /// You can use this to parse JSON strings containing invalid UTF-8 bytes,
-    /// or unpaired surrogates.
-    ///
-    /// ```
-    /// use serde_bytes::ByteBuf;
-    ///
-    /// fn look_at_bytes() -> Result<(), serde_json::Error> {
-    ///     let json_data = b"\"some bytes: \xe5\x00\xe5\"";
-    ///     let bytes: ByteBuf = serde_json::from_slice(json_data)?;
-    ///
-    ///     assert_eq!(b'\xe5', bytes[12]);
-    ///     assert_eq!(b'\0', bytes[13]);
-    ///     assert_eq!(b'\xe5', bytes[14]);
-    ///
-    ///     Ok(())
-    /// }
-    /// #
-    /// # look_at_bytes().unwrap();
-    /// ```
-    ///
-    /// Backslash escape sequences like `\n` are still interpreted and required
-    /// to be valid. `\u` escape sequences are required to represent a valid
-    /// Unicode code point or lone surrogate.
-    ///
-    /// ```
-    /// use serde_bytes::ByteBuf;
-    ///
-    /// fn look_at_bytes() -> Result<(), serde_json::Error> {
-    ///     let json_data = b"\"lone surrogate: \\uD801\"";
-    ///     let bytes: ByteBuf = serde_json::from_slice(json_data)?;
-    ///     let expected = b"lone surrogate: \xED\xA0\x81";
-    ///     assert_eq!(expected, bytes.as_slice());
-    ///     Ok(())
-    /// }
-    /// #
-    /// # look_at_bytes();
-    /// ```
+    /// Deserialize a base64-encoded string.
     fn deserialize_bytes<V>(self, visitor: V) -> Result<V::Value>
     where
         V: de::Visitor<'de>,
@@ -1637,10 +1566,18 @@ impl<'de, 'a, R: Read<'de>> de::Deserializer<'de> for &'a mut Deserializer<R> {
             b'"' => {
                 self.eat_char();
                 self.scratch.clear();
-                match tri!(self.read.parse_str_raw(&mut self.scratch)) {
-                    Reference::Borrowed(b) => visitor.visit_borrowed_bytes(b),
-                    Reference::Copied(b) => visitor.visit_bytes(b),
-                }
+                // Note: base64 is always valid UTF8. If the input is not, this will be caught by
+                // the base64 decoder, so no need to validate using `parse_str`.
+                let raw_str = tri!(self.read.parse_str_raw(&mut self.scratch));
+                // Avoid reallocation in case we deserialize to an owned type by using [de::Visitor::visit_byte_buf] rather than [de::Visitor::visit_bytes]
+                // Note that we cannot deserialize into `Bytes`, since those require a borrow from
+                // the input
+                visitor.visit_byte_buf(raw_str.from_base64().map_err(|_| {
+                    de::Error::invalid_value(
+                        de::Unexpected::Bytes(&raw_str),
+                        &"base64 encoded bytes",
+                    )
+                })?)
             }
             b'[' => self.deserialize_seq(visitor),
             _ => Err(self.peek_invalid_type(&visitor)),

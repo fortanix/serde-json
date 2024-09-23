@@ -4,6 +4,7 @@ use crate::error::{Error, ErrorCode, Result};
 use crate::io;
 use alloc::string::{String, ToString};
 use alloc::vec::Vec;
+use b64_ct::{ToBase64 as _, STANDARD};
 use core::fmt::{self, Display};
 use core::num::FpCategory;
 use serde::ser::{self, Impossible, Serialize};
@@ -187,11 +188,10 @@ where
         format_escaped_str(&mut self.writer, &mut self.formatter, value).map_err(Error::io)
     }
 
+    /// Serialize to a base64-encoded string
     #[inline]
     fn serialize_bytes(self, value: &[u8]) -> Result<()> {
-        self.formatter
-            .write_byte_array(&mut self.writer, value)
-            .map_err(Error::io)
+        self.serialize_str(&value.to_base64(STANDARD))
     }
 
     #[inline]
@@ -1060,8 +1060,8 @@ where
         self.ser.serialize_str(&value.to_string())
     }
 
-    fn serialize_bytes(self, _value: &[u8]) -> Result<()> {
-        Err(key_must_be_a_string())
+    fn serialize_bytes(self, value: &[u8]) -> Result<()> {
+        self.ser.serialize_bytes(value)
     }
 
     fn serialize_unit(self) -> Result<()> {
