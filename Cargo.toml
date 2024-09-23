@@ -12,6 +12,7 @@ repository = "https://github.com/serde-rs/json"
 rust-version = "1.56"
 
 [dependencies]
+b64-ct = "0.1.2"
 indexmap = { version = "2.2.3", optional = true }
 itoa = "1.0"
 memchr = { version = "2", default-features = false }
