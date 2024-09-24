@@ -1692,22 +1692,23 @@ fn test_byte_buf_ser() {
 }
 
 /// Note:
-/// - the deserialization path depends on whether a Json array or string is fed as input
+/// - the deserialization path for bytes depends on whether a Json string (this test) or Json array (next test)
 /// - we cannot deserialize into [Bytes] using base64; we never borrow from the original input, as
 /// we need to create a new allocation as part of the base64 decoding process
 #[test]
-fn test_byte_buf_de() {
-    // Json strings are deserialized compactly as `Strings` when the target type uses
-    // `deserialize_bytes`
+fn test_byte_buf_base64_de() {
+    // Tests two paths to deserialize as bytes, expanding base64 in the last step each time:
+    // 1. Compact b64 String -> Json String Value -> Amphibia
+    // 2. Compact b64 String -> Amphibia
     test_parse_ok(vec![
         ("\"\"", ByteBuf::new()),
         ("\"AQID\"", ByteBuf::from(vec![1, 2, 3])),
     ]);
+}
 
-    // Original implementation: deserialization of bracketed string from an `Array`
-    test_parse_ok(vec![("[]", Vec::new()), ("[1, 2, 3]", vec![1, 2, 3])]);
-
-    // When serializing as a sequence but deserializing as bytes, deserialization still works
+#[test]
+fn test_byte_buf_array_de() {
+    /// Struct that serializes as a sequence but deserializes as bytes. This is required because [`test_parse_ok`] uses the [`Value`] [`Deserialize`] implementation internally, which deserializes strings starting in "[" to json [`Value::Array`]s.
     #[derive(Clone, Debug, PartialEq)]
     struct Amphibia {
         bytes: Vec<u8>,
@@ -1739,6 +1740,9 @@ fn test_byte_buf_de() {
         }
     }
 
+    // Tests two paths to deserialize as bytes:
+    // 1. Array String -> Json Array Value -> Amphibia
+    // 2. Array String -> Amphibia
     test_parse_ok(vec![
         ("[]", Amphibia::new(vec![])),
         ("[1, 2, 3]", Amphibia::new(vec![1, 2, 3])),
