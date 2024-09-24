@@ -1692,7 +1692,7 @@ fn test_byte_buf_ser() {
 }
 
 /// Note:
-/// - the deserialization path for bytes depends on whether a Json string (this test) or Json array (next test)
+/// - the deserialization path for bytes depends on whether a Json string (this test) or Json array (next test) is provided as input
 /// - we cannot deserialize into [Bytes] using base64; we never borrow from the original input, as
 /// we need to create a new allocation as part of the base64 decoding process
 #[test]
