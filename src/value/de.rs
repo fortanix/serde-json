@@ -365,9 +365,9 @@ impl<'de> serde::Deserializer<'de> for Value {
         match self {
             // Base-64 encoded bytes
             #[cfg(any(feature = "std", feature = "alloc"))]
-            Value::String(v) => visitor.visit_byte_buf(v.from_base64().map_err(|_| {
+            Value::String(v) => visitor.visit_byte_buf(tri!(v.from_base64().map_err(|_| {
                 de::Error::invalid_value(de::Unexpected::Str(&v), &"base64 encoded string")
-            })?),
+            }))),
             Value::Array(v) => visit_array(v, visitor),
             _ => Err(self.invalid_type(&visitor)),
         }
@@ -859,9 +859,9 @@ impl<'de> serde::Deserializer<'de> for &'de Value {
         match self {
             // Base-64 encoded bytes
             #[cfg(any(feature = "std", feature = "alloc"))]
-            Value::String(v) => visitor.visit_byte_buf(v.from_base64().map_err(|_| {
+            Value::String(v) => visitor.visit_byte_buf(tri!(v.from_base64().map_err(|_| {
                 de::Error::invalid_value(de::Unexpected::Str(v), &"base64 encoded string")
-            })?),
+            }))),
             Value::Array(v) => visit_array_ref(v, visitor),
             _ => Err(self.invalid_type(&visitor)),
         }
@@ -1254,9 +1254,9 @@ impl<'de> serde::Deserializer<'de> for MapKeyDeserializer<'de> {
             Cow::Owned(ref s) => s,
         };
 
-        visitor.visit_byte_buf(raw_str.from_base64().map_err(|_| {
+        visitor.visit_byte_buf(tri!(raw_str.from_base64().map_err(|_| {
             de::Error::invalid_value(de::Unexpected::Str(raw_str), &"base64 encoded bytes")
-        })?)
+        })))
     }
 
     fn deserialize_byte_buf<V>(self, visitor: V) -> Result<V::Value, Error>

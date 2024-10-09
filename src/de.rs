@@ -1572,12 +1572,12 @@ impl<'de, 'a, R: Read<'de>> de::Deserializer<'de> for &'a mut Deserializer<R> {
                 // Avoid reallocation in case we deserialize to an owned type by using [de::Visitor::visit_byte_buf] rather than [de::Visitor::visit_bytes]
                 // Note that we cannot deserialize into `Bytes`, since those require a borrow from
                 // the input
-                visitor.visit_byte_buf(raw_str.from_base64().map_err(|_| {
+                visitor.visit_byte_buf(tri!(raw_str.from_base64().map_err(|_| {
                     de::Error::invalid_value(
                         de::Unexpected::Bytes(&raw_str),
                         &"base64 encoded bytes",
                     )
-                })?)
+                })))
             }
             b'[' => self.deserialize_seq(visitor),
             _ => Err(self.peek_invalid_type(&visitor)),

@@ -1678,9 +1678,9 @@ fn test_serialize_rejects_adt_keys() {
 #[test]
 fn test_bytes_ser() {
     test_encode_ok(&[
-        (Bytes::new(&(vec![])), "\"\""),
-        (Bytes::new(&(vec![1, 2, 3])), "\"AQID\""),
-    ])
+        (Bytes::new(&[]), "\"\""),
+        (Bytes::new(&[1, 2, 3]), "\"AQID\""),
+    ]);
 }
 
 #[test]
@@ -1688,13 +1688,13 @@ fn test_byte_buf_ser() {
     test_encode_ok(&[
         (ByteBuf::new(), "\"\""),
         (ByteBuf::from(vec![1, 2, 3]), "\"AQID\""),
-    ])
+    ]);
 }
 
-/// Note:
-/// - the deserialization path for bytes depends on whether a Json string (this test) or Json array (next test) is provided as input
-/// - we cannot deserialize into [Bytes] using base64; we never borrow from the original input, as
-/// we need to create a new allocation as part of the base64 decoding process
+// Note:
+// - the deserialization path for bytes depends on whether a Json string (this test) or Json array (next test) is provided as input
+// - we cannot deserialize into [Bytes] using base64; we never borrow from the original input, as
+// we need to create a new allocation as part of the base64 decoding process
 #[test]
 fn test_byte_buf_base64_de() {
     // Tests two paths to deserialize as bytes, expanding base64 in the last step each time:
