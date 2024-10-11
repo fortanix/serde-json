@@ -12,7 +12,7 @@ repository = "https://github.com/serde-rs/json"
 rust-version = "1.56"
 
 [dependencies]
-b64-ct = "0.1.2"
+b64-ct = { version = "0.1.2", default-features = false }
 indexmap = { version = "2.2.3", optional = true }
 itoa = "1.0"
 memchr = { version = "2", default-features = false }
@@ -47,7 +47,7 @@ features = ["raw_value"]
 [features]
 default = ["std"]
 
-std = ["memchr/std", "serde/std"]
+std = ["memchr/std", "serde/std", "b64-ct/std"]
 
 # Provide integration for heap-allocated collections without depending on the
 # rest of the Rust standard library.
